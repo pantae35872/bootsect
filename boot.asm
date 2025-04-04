@@ -5,6 +5,28 @@ jmp start
 KEYBOARD_SERVICES equ 0x16
 VIDEO_SERVICES equ 0x10
 
+; Colors
+BLACK equ 0x00
+BLUE equ 0x01
+GREEN equ 0x02
+CYAN equ 0x03
+RED equ 0x04
+MAGENTA equ 0x05
+BROWN equ 0x06
+WHITE equ 0x07
+DARK_GRAY equ 0x08
+BRIGHT_BLUE equ 0x09
+BRIGHT_GREEN equ 0x0A
+BRIGHT_CYAN equ 0x0B
+BRIGHT_RED equ 0x0C
+BRIGHT_MAGENTA equ 0x0D
+BRIGHT_YELLOW equ 0x0E
+BRIGHT_WHITE equ 0x0F
+
+; GDT Segments
+CODE_SEG equ 0x08
+DATA_SEG equ 0x10
+
 macro bios_int service,code
 {
   mov ah, code
@@ -17,6 +39,18 @@ macro biosx_int service,code
   int service
 }
 
+macro interrupt_gate offset, is_trap
+{
+  dw offset and 0xFFFF
+  dw CODE_SEG
+  db 0x00
+  if is_trap
+    db 10001111b
+  else
+    db 10001110b
+  end if
+  dw offset shr 16
+}
 
 GDT:
   dd 0
@@ -41,8 +75,37 @@ GDT_PTR:
   dw GDT_END-GDT-1
   dd GDT
 
-CODE_SEG equ 0x08
-DATA_SEG equ 0x10
+IDT:
+interrupt_gate hlt_loop, 1 ; Divide Error
+interrupt_gate hlt_loop, 1 ; Debug Exception
+interrupt_gate hlt_loop, 0 ; NMI Interrupt
+interrupt_gate hlt_loop, 1 ; Breakpoint Exception
+interrupt_gate hlt_loop, 1 ; Overflow Exception
+interrupt_gate hlt_loop, 1 ; BOUND Range Exceeded Exception
+interrupt_gate hlt_loop, 1 ; Invalid Opcode Exception
+interrupt_gate hlt_loop, 1 ; Device Not Available Exception
+interrupt_gate hlt_loop, 1 ; Double Fault Exception
+interrupt_gate hlt_loop, 1 ; Coprocessor Segment Overrun
+interrupt_gate hlt_loop, 1 ; Invalid TSS
+interrupt_gate hlt_loop, 1 ; Segment Not Present
+interrupt_gate hlt_loop, 1 ; Stack Fault
+interrupt_gate hlt_loop, 1 ; General Protection Exception
+interrupt_gate hlt_loop, 1 ; Page Fault
+interrupt_gate hlt_loop, 1 ; Reserved
+interrupt_gate hlt_loop, 1 ; Floating Point Error
+interrupt_gate hlt_loop, 1 ; Alignment Check
+interrupt_gate hlt_loop, 1 ; Machine Check
+interrupt_gate hlt_loop, 1 ; SIMD Floating Point Exception
+interrupt_gate hlt_loop, 1 ; Virtualization Exception
+interrupt_gate hlt_loop, 1 ; Control Protection Exception
+repeat 10
+  interrupt_gate hlt_loop, 1 ; Reserved
+end repeat
+IDT_END:
+
+IDT_PTR:
+  dw IDT_END-IDT-1
+  dd IDT
 
 start:
   ; Setup segments
@@ -69,6 +132,10 @@ start:
   jmp CODE_SEG:protected_mode_entry
 
 use32
+
+hlt_loop:
+  hlt
+  jmp hlt_loop
 
 ; Put pixel on the framebuffer
 ; inputs:
@@ -98,7 +165,7 @@ protected_mode_entry:
 	;call print		; Printing PM Welcome message
 
   xor eax, eax
-  mov cl, 0x0C
+  mov cl, BRIGHT_GREEN
 .loop:
   xor ebx, ebx
   .loop1:
