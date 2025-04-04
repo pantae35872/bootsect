@@ -1,5 +1,8 @@
 # BootSect
 
+![Project Status](https://img.shields.io/badge/status-not%20finished-orange)
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
+
 A snake game that's suppose to fit in a 512 bytes (boot sector)
 
 ## Build Dependices
