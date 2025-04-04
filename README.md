@@ -6,8 +6,8 @@
 A snake game that's suppose to fit in a 512 bytes (boot sector)
 
 EDIT:    
-BAD NEWS guys it's looks like we need more than 1 sector, because of IDT tables taking up all the spaces.
-i mean, i could try to dynamically generated the table at runtime. but nahh, loading another seems more fun.
+BAD NEWS guys it's looks like we need more than 1 sector, because the IDT tables taking up all the spaces.
+i mean, i could try to dynamically generated the table at runtime. but nahh, loading another sector seems more fun.
 
 ## Build Dependices
 * ```fasm``` (https://flatassembler.net/)
