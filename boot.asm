@@ -67,7 +67,7 @@ SNAKE_DIRECTION_DOWN equ 1
 SNAKE_DIRECTION_LEFT equ 2
 SNAKE_DIRECTION_RIGHT equ 3
 
-BOARD_X_SIZE equ 20
+BOARD_X_SIZE equ 32
 BOARD_Y_SIZE equ 20
 
 SNAKE_WIDTH equ 10
@@ -557,8 +557,10 @@ generate_apple:
   mov ecx, eax
   imul ecx, BOARD_X_SIZE
   mov al, byte [board + ecx + ebx]
+  push bx
   call is_snake
   cmp bl, 1
+  pop bx
   je .generate_apple
   mov byte [c_board + ecx + ebx], APPLE
 .done:
