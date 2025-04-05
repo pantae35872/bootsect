@@ -54,7 +54,7 @@ ICW4_BUF_MASTER	equ 0x0C	; Buffered mode/master
 ICW4_SFNM	equ 0x10		    ; Special fully nested (not)
 
 ; PIT
-PIT_FREQ equ 100
+PIT_FREQ equ 1000
 PIT_FREQ_D = 1193180 / PIT_FREQ
 
 ; VGA
@@ -337,11 +337,34 @@ keyboard_isr:
   cmp al, 0xE0
   je .read_extended
   mov byte [latest_key], al
-  jmp .done
+  jmp .snake
 .read_extended:
   mov byte [latest_key + 1], al
   inb 0x60, al
   mov byte [latest_key], al
+.snake:
+  mov ax, [latest_key]
+  cmp ax, 0xE048
+  je .snake_up
+  cmp ax, 0xE050
+  je .snake_down
+  cmp ax, 0xE04B
+  je .snake_left
+  cmp ax, 0xE04D
+  je .snake_right
+  jmp .done
+  .snake_left:
+    mov byte [snake_direction], SNAKE_DIRECTION_LEFT
+    jmp .done
+  .snake_right:
+    mov byte [snake_direction], SNAKE_DIRECTION_RIGHT
+    jmp .done
+  .snake_up:
+    mov byte [snake_direction], SNAKE_DIRECTION_UP
+    jmp .done
+  .snake_down:
+    mov byte [snake_direction], SNAKE_DIRECTION_DOWN
+    jmp .done
 .done:
   mov eax, 1
   call pic_eoi
@@ -373,35 +396,14 @@ game_start:
   mov byte [board + ecx + ebx], SNAKE_D
   mov byte [snake_direction], SNAKE_DIRECTION_DOWN
 .game_loop:
-  ;mov ax, [latest_key]
-  ;cmp ax, 0x81
-  ;je .exit
-  ;cmp ax, 0xE0C8
-  ;je .snake_up
-  ;cmp ax, 0xE0D0
-  ;je .snake_down
-  ;cmp ax, 0xE0CB
-  ;je .snake_left
-  ;cmp ax, 0xE0CD
-  ;je .snake_right
-  ;jmp .move_snake
-  ;.snake_left:
-  ;  mov byte [snake_direction], SNAKE_DIRECTION_LEFT
-  ;  jmp .move_snake
-  ;.snake_right:
-  ;  mov byte [snake_direction], SNAKE_DIRECTION_RIGHT
-  ;  jmp .move_snake
-  ;.snake_up:
-  ;  mov byte [snake_direction], SNAKE_DIRECTION_UP
-  ;  jmp .move_snake
-  ;.snake_down:
-  ;  mov byte [snake_direction], SNAKE_DIRECTION_DOWN
-  ;.move_snake: 
-  mov eax, 1        ;|
-  call wait_seconds ;| wait for 1 second
+  mov eax, 500
+  call wait_millis ;| wait for 1 second
   call render_board
   call move_snake
-  jmp .game_loop 
+  mov ax, [latest_key]
+  cmp ax, 0x81
+  je .exit
+  jmp .game_loop
 .exit:
   ret
 
@@ -484,6 +486,7 @@ move_snake:
       imul ecx, BOARD_X_SIZE
       mov byte [c_board + ecx + ebx], BOARD_EMPTY
       pop ecx
+      jmp .nothing
     .generate_snake:
       call generate_snake
     .nothing:
@@ -504,12 +507,39 @@ move_snake:
 ; ecx = Y position
 ; dirty: none
 ; return: 
-; dl = 3 if it's a body, 1 if it's a tail, 2 if it's a head
+; dl = 3 if it's a body, 1 if it's a tail, 2 if it's a head, 0 if it's not a snake
 check_snake:
   push edi
   push ebx
   push eax
+
   xor dl, dl
+
+  push bx
+  call is_snake ; Check If theres a snake right
+  cmp bl, 0
+  pop bx
+  je .done
+
+  push ax
+  push bx
+  mov edi, ebx
+  call get_snake_neighbours
+  cmp al, SNAKE_R
+  je .got_pointed
+  cmp ah, SNAKE_L
+  je .got_pointed
+  cmp bl, SNAKE_D
+  je .got_pointed
+  cmp bh, SNAKE_U
+  je .got_pointed
+  jmp .next
+.got_pointed:
+  or dl, 10b 
+.next:
+  pop bx
+  pop ax
+
   cmp al, SNAKE_U
   je .snake_up
   cmp al, SNAKE_D
@@ -519,6 +549,7 @@ check_snake:
   cmp al, SNAKE_R
   je .snake_right
   jmp .done
+
 .snake_up:
   mov edi, ebx
   call get_snake_neighbours
@@ -527,19 +558,11 @@ check_snake:
   call is_snake ; If theres a snake upwards
   or dl, bl
 
-  mov al, bh
-  call is_snake ; If theres a snake downwards
-  shl bl, 1
-  or dl, bl
   jmp .done
+
 .snake_down:
   mov edi, ebx
   call get_snake_neighbours
-
-  mov al, bl
-  call is_snake ; If theres a snake upwards
-  shl bl, 1
-  or dl, bl
 
   mov al, bh
   call is_snake ; If theres a snake downwards
@@ -548,10 +571,6 @@ check_snake:
 .snake_right:
   mov edi, ebx
   call get_snake_neighbours
-
-  call is_snake ; If theres a snake left 
-  shl bl, 1
-  or dl, bl
 
   mov al, ah
   call is_snake ; If theres a snake right
@@ -565,11 +584,6 @@ check_snake:
   call is_snake ; If theres a snake on the left
   or dl, bl
 
-  mov al, ah
-  call is_snake ; If theres a snake on the right
-  shl bl, 1
-  or dl, bl
-  jmp .done
 .done:
   pop eax
   pop ebx
@@ -593,11 +607,11 @@ get_snake_neighbours:
   ; Save ecx to edx for later use
   mov edx, ecx
 
-  ; Up neighbour
+  ; Down neighbour
   inc ecx
   imul ecx, BOARD_X_SIZE
   mov bh, [board + ecx + edi]
-  ; Down neighbour
+  ; Up neighbour
   mov ecx, edx
   dec ecx
   imul ecx, BOARD_X_SIZE
@@ -654,18 +668,35 @@ render_board:
       mov esi, ecx
       cmp al, BOARD_EMPTY
       je .draw_empty
-      push bx
-      call is_snake
-      cmp bl, 1
-      pop bx
-      je .draw_snake
+      cmp al, SNAKE_U
+      je .draw_snake_u
+      cmp al, SNAKE_D
+      je .draw_snake_d
+      cmp al, SNAKE_L
+      je .draw_snake_l
+      cmp al, SNAKE_R
+      je .draw_snake_r
+      ;push bx
+      ;call is_snake
+      ;cmp bl, 1
+      ;pop bx
+      ;je .draw_snake
       cmp al, APPLE
       je .draw_apple
       .draw_empty:
         mov cl, BLUE
         jmp .draw
-      .draw_snake:
+      .draw_snake_u:
         mov cl, BRIGHT_GREEN
+        jmp .draw
+      .draw_snake_l:
+        mov cl, BRIGHT_YELLOW
+        jmp .draw
+      .draw_snake_r:
+        mov cl, BRIGHT_RED
+        jmp .draw
+      .draw_snake_d:
+        mov cl, BRIGHT_MAGENTA
         jmp .draw
       .draw_apple:
         mov cl, BRIGHT_RED
@@ -687,18 +718,18 @@ render_board:
   ret
 
 
-; Wait in seconds (Spin the processor until the completely useless time has passed)
+; Wait in milliseconds (Spin the processor until the completely useless time has passed)
 ; inputs: 
-; eax = seconds
+; eax = milliseconds
 ; dirty: none
 ; return: none
-wait_seconds:
+wait_millis:
   push eax
   push ecx
   push ebx
   xor ecx, ecx
   mov ebx, eax 
-  imul ebx, PIT_FREQ
+  imul ebx, PIT_FREQ / 1000
   mov eax, [tick_count]
   add ebx, eax
 .loop:
