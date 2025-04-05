@@ -80,6 +80,8 @@ SNAKE_L equ 3
 SNAKE_R equ 4
 APPLE equ 5
 
+GAME_SPEED equ 150
+
 macro bios_int service,code
 {
   mov ah, code
@@ -183,7 +185,7 @@ IDT_PTR:
 DAPACK:
 	db	0x10
 	db	0
-blkcnt:	dw	2		; int 13 resets this to # of blocks actually read/written
+blkcnt:	dw	3		; int 13 resets this to # of blocks actually read/written
 db_add:	dw	0x7E00		; memory buffer destination address (0:7c00)
 	dw	0		; in memory page zero
 d_lba:	dd	1		; put the lba to read in this spot
@@ -199,6 +201,8 @@ virtual at 0x500
     snake_direction db ?
     board rb BOARD_X_SIZE * BOARD_Y_SIZE
     c_board rb BOARD_X_SIZE * BOARD_Y_SIZE
+    eaten db ?
+    c_eaten db ?
     ;my_struct:
     ;    .field1 dd ?
     ;    .field2 db ?
@@ -412,7 +416,7 @@ game_start:
   mov byte [board + ecx + ebx], APPLE
   mov byte [snake_direction], SNAKE_DIRECTION_DOWN
 .game_loop:
-  mov eax, 200
+  mov eax, GAME_SPEED
   call wait_millis ;| wait for 1 second
   call render_board
   call move_snake
@@ -453,6 +457,7 @@ clone_board_back:
 generate_snake:
   push ecx
   push ebx
+  push ax
   mov dl, byte [snake_direction] 
   inc dl ; convert from 0-3 to 1-4
   cmp al, SNAKE_U
@@ -465,24 +470,35 @@ generate_snake:
   je .snake_right
 .snake_up:
   dec ecx
-  jmp .done
+  jmp .check_apple
 .snake_down:
   inc ecx
-  jmp .done
+  jmp .check_apple
 .snake_right:
   inc ebx
-  jmp .done
+  jmp .check_apple
 .snake_left:
   dec ebx
-.done:
+.check_apple:
   imul ecx, BOARD_X_SIZE
+
+  mov al, byte [c_board + ecx + ebx]
+  cmp al, APPLE
+  je .apple
+  jmp .done
+.apple:
+  mov byte [c_eaten], 1
+.done:
   mov byte [c_board + ecx + ebx], dl
+  pop ax
   pop ebx
   pop ecx
   ret
 
 move_snake:
   call clone_board
+  mov al, [eaten]
+  mov byte [c_eaten], al
   xor ecx, ecx ; ecx is the y position
 .loop_y:   
   xor ebx, ebx ; ebx is the x position
@@ -498,6 +514,10 @@ move_snake:
     je .generate_snake
     jmp .nothing
     .remove_snake:
+      mov ah, byte [eaten]
+      cmp ah, 1
+      je .reset_apple
+
       push ecx
       imul ecx, BOARD_X_SIZE
       mov byte [c_board + ecx + ebx], BOARD_EMPTY
@@ -505,6 +525,10 @@ move_snake:
       jmp .nothing
     .generate_snake:
       call generate_snake
+      jmp .nothing
+    .reset_apple:
+      mov byte [c_eaten], 0
+      call generate_apple
     .nothing:
     inc ebx
     cmp ebx, BOARD_X_SIZE
@@ -514,6 +538,60 @@ move_snake:
   jne .loop_y
 .done:
   call clone_board_back
+  mov al, byte [c_eaten]
+  mov byte [eaten], al
+  ret
+
+; Generate a random apple
+; inputs: none
+; dirty: none
+; return: none
+generate_apple:
+  push eax
+  push ebx
+  push ecx
+.generate_apple:
+  call randx
+  mov ebx, eax
+  call randy
+  mov ecx, eax
+  imul ecx, BOARD_X_SIZE
+  mov al, byte [board + ecx + ebx]
+  call is_snake
+  cmp bl, 1
+  je .generate_apple
+  mov byte [c_board + ecx + ebx], APPLE
+.done:
+  pop ecx
+  pop ebx
+  pop eax
+  ret
+
+; Generate a random number for the x coordinate
+; inputs: none
+; dirty: none
+; return: eax = random number between 0-BOARD_X_SIZE
+randx:
+  push edx
+  rdtsc                       ; EDX:EAX = timestamp counter
+  mov ebx, BOARD_X_SIZE - 1   ; divisor for modulo
+  xor edx, edx                ; clear EDX before division (required for div)
+  div ebx                     ; EAX = EAX / 20, EDX = EAX % 20
+  mov eax, edx                ; EAX = random number between 0–19
+  pop edx
+  ret
+; Generate a random number for the y coordinate
+; inputs: none
+; dirty: none
+; return: eax = random number between 0-BOARD_Y_SIZE
+randy:
+  push edx
+  rdtsc                       ; EDX:EAX = timestamp counter
+  mov ebx, BOARD_Y_SIZE - 1   ; divisor for modulo
+  xor edx, edx                ; clear EDX before division (required for div)
+  div ebx                     ; EAX = EAX / 20, EDX = EAX % 20
+  mov eax, edx                ; EAX = random number between 0–19
+  pop edx
   ret
 
 ; Chck if snake is a head or a tail or body
@@ -831,4 +909,4 @@ clear_screen:
 .done:
   ret
 
-times 1024 - ($-$$) db 0
+times 1536 - ($-$$) db 0
