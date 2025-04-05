@@ -354,15 +354,27 @@ keyboard_isr:
   je .snake_right
   jmp .done
   .snake_left:
+    mov al, [snake_direction]
+    cmp al, SNAKE_DIRECTION_RIGHT
+    je .done
     mov byte [snake_direction], SNAKE_DIRECTION_LEFT
     jmp .done
   .snake_right:
+    mov al, [snake_direction]
+    cmp al, SNAKE_DIRECTION_LEFT
+    je .done
     mov byte [snake_direction], SNAKE_DIRECTION_RIGHT
     jmp .done
   .snake_up:
+    mov al, [snake_direction]
+    cmp al, SNAKE_DIRECTION_DOWN
+    je .done
     mov byte [snake_direction], SNAKE_DIRECTION_UP
     jmp .done
   .snake_down:
+    mov al, [snake_direction]
+    cmp al, SNAKE_DIRECTION_UP
+    je .done
     mov byte [snake_direction], SNAKE_DIRECTION_DOWN
     jmp .done
 .done:
@@ -394,9 +406,13 @@ game_start:
   imul ecx, BOARD_X_SIZE
   mov ebx, 1
   mov byte [board + ecx + ebx], SNAKE_D
+  mov ecx, 10
+  imul ecx, BOARD_X_SIZE
+  mov ebx, 10
+  mov byte [board + ecx + ebx], APPLE
   mov byte [snake_direction], SNAKE_DIRECTION_DOWN
 .game_loop:
-  mov eax, 500
+  mov eax, 200
   call wait_millis ;| wait for 1 second
   call render_board
   call move_snake
@@ -668,37 +684,20 @@ render_board:
       mov esi, ecx
       cmp al, BOARD_EMPTY
       je .draw_empty
-      cmp al, SNAKE_U
-      je .draw_snake_u
-      cmp al, SNAKE_D
-      je .draw_snake_d
-      cmp al, SNAKE_L
-      je .draw_snake_l
-      cmp al, SNAKE_R
-      je .draw_snake_r
-      ;push bx
-      ;call is_snake
-      ;cmp bl, 1
-      ;pop bx
-      ;je .draw_snake
+      push bx
+      call is_snake
+      cmp bl, 1
+      pop bx
+      je .draw_snake
       cmp al, APPLE
       je .draw_apple
       .draw_empty:
         mov cl, BLUE
         jmp .draw
-      .draw_snake_u:
+      .draw_snake:
         mov cl, BRIGHT_GREEN
         jmp .draw
-      .draw_snake_l:
-        mov cl, BRIGHT_YELLOW
-        jmp .draw
-      .draw_snake_r:
-        mov cl, BRIGHT_RED
-        jmp .draw
-      .draw_snake_d:
-        mov cl, BRIGHT_MAGENTA
-        jmp .draw
-      .draw_apple:
+     .draw_apple:
         mov cl, BRIGHT_RED
       .draw:
         push ebx
