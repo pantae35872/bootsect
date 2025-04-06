@@ -576,6 +576,7 @@ generate_apple:
 randx:
   push edx
   rdtsc                       ; EDX:EAX = timestamp counter
+  xor eax, edx
   mov ebx, BOARD_X_SIZE - 1   ; divisor for modulo
   xor edx, edx                ; clear EDX before division (required for div)
   div ebx                     ; EAX = EAX / 20, EDX = EAX % 20
@@ -588,11 +589,27 @@ randx:
 ; return: eax = random number between 0-BOARD_Y_SIZE
 randy:
   push edx
+  push ecx
+  push ebx
+
   rdtsc                       ; EDX:EAX = timestamp counter
+  xor eax, edx
+  rol eax, 5                  ; rotate bits left to shuffle them
+  mov ecx, esp
+  xor eax, ecx                ; mix in stack pointer for more entropy
+  not eax                     ; invert bits (more mixing)
+
+  rdtsc                       ; fetch again to add more variability
+  xor eax, edx
+  ror eax, 3                  ; rotate bits right
+
   mov ebx, BOARD_Y_SIZE - 1   ; divisor for modulo
-  xor edx, edx                ; clear EDX before division (required for div)
-  div ebx                     ; EAX = EAX / 20, EDX = EAX % 20
-  mov eax, edx                ; EAX = random number between 0–19
+  xor edx, edx                ; clear EDX before division
+  div ebx                     ; EAX = EAX / N, EDX = EAX % N
+  mov eax, edx                ; EAX = random number between 0–N-1
+
+  pop ebx
+  pop ecx
   pop edx
   ret
 
